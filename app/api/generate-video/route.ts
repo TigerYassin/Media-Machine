@@ -74,7 +74,7 @@ async function submitKlingTask(
       Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify({
-      model_name: "kling-v3",
+      model_name: "kling-v1-6",
       prompt: `${style} style. ${visualPrompt}. Camera movement: ${cameraMovement}. Cinematic quality, professional production.`,
       negative_prompt: "blurry, low quality, distorted, amateur",
       cfg_scale: 0.5,
