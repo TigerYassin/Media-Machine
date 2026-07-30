@@ -76,10 +76,8 @@ async function submitKlingTask(
     body: JSON.stringify({
       model_name: "kling-v1-6",
       prompt: `${style} style. ${visualPrompt}. Camera movement: ${cameraMovement}. Cinematic quality, professional production.`,
-      negative_prompt: "blurry, low quality, distorted, amateur",
-      cfg_scale: 0.5,
-      mode: "std",  // "std" (faster/cheaper) or "pro" (higher quality)
-      duration: "10", // each scene becomes a 10s clip — matched to LENGTH_SCENE_COUNT below
+      mode: "std",
+      duration: "10",
     }),
   });
 
@@ -108,6 +106,7 @@ async function pollKlingTask(
       message: string;
       data?: {
         task_status: string;
+        task_status_msg?: string;
         task_result?: { videos?: { url: string }[] };
       };
     };
@@ -120,7 +119,10 @@ async function pollKlingTask(
       if (!url) throw new Error("Kling succeeded but returned no video URL.");
       return url;
     }
-    if (status === "failed") throw new Error(`Kling task ${taskId} failed.`);
+    if (status === "failed") {
+      const reason = json.data?.task_status_msg ?? "no reason returned";
+      throw new Error(`Kling task ${taskId} failed: ${reason}`);
+    }
     // status is "submitted" or "processing" — keep polling
   }
   throw new Error("Kling task timed out after 5 minutes.");
