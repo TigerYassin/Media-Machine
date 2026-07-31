@@ -252,11 +252,15 @@ export async function POST(req: NextRequest) {
       const total = scenes.length;
 
       try {
-        // Submit all Kling tasks at once so they generate in parallel.
+        // Submit tasks sequentially (avoids hitting the 5-concurrent-task limit),
+        // then poll and process all of them in parallel.
         send({ type: "progress", scene: 0, total, step: "video", message: `Submitting all ${total} scenes to Kling AI…` });
-        const taskIds = await Promise.all(
-          scenes.map((scene) => submitKlingTask(klingApiKey, scene.visualPrompt, scene.cameraMovement, style))
-        );
+        const taskIds: string[] = [];
+        for (let i = 0; i < scenes.length; i++) {
+          const scene = scenes[i];
+          const id = await submitKlingTask(klingApiKey, scene.visualPrompt, scene.cameraMovement, style);
+          taskIds.push(id);
+        }
 
         // Poll + download + voiceover + merge all scenes in parallel.
         // Each scene races independently; the slowest one determines wall-clock time.
