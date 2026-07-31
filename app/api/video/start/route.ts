@@ -7,7 +7,7 @@ import path from "path";
 dns.setDefaultResultOrder("ipv4first");
 setGlobalDispatcher(new Agent({ connect: { family: 4 } }));
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 const TMP_DIR = path.join("/tmp", "engine-videos");
 
@@ -28,7 +28,7 @@ async function submitKlingTask(apiKey: string, visualPrompt: string, cameraMovem
     const json = (await res.json()) as { code: number; message: string; data?: { task_id: string } };
     if (json.code === 0 && json.data?.task_id) return json.data.task_id;
     if (json.message?.includes("resource pack limit") && attempt < 4) {
-      await new Promise((r) => setTimeout(r, 20000)); // wait 20s for previous tasks to finish
+      await new Promise((r) => setTimeout(r, 12000)); // wait 12s for previous tasks to free up
       continue;
     }
     throw new Error(`Kling submit failed: ${json.message}`);
