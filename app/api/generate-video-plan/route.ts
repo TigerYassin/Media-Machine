@@ -104,9 +104,16 @@ Respond with ONLY valid JSON (no markdown, no code fences) matching this shape:
   ]
 }
 
-Target video length: ${length} (${sceneCount} scenes, each scene is exactly 10 seconds of video).
-Write voiceoverText for each scene long enough to take up most of its 10-second window
-when read at a natural pace (roughly 20-28 words) — short one-liners leave dead air.
+Target video length: ${length} (${sceneCount} scenes × 10 seconds each).
+
+Rules:
+- voiceoverText: 15-20 words max per scene. Short, punchy lines only — no run-ons.
+- visualPrompt: be very specific and cinematic. Include subject, setting, lighting, mood,
+  and action. Example: "Close-up of hands typing on a glowing keyboard in a dark room,
+  blue neon light casting shadows, shallow depth of field, cinematic." Avoid generic
+  descriptions like "a person doing X" — paint a vivid frame.
+- Each scene's visual should flow naturally into the next (consistent color palette,
+  setting continuity where possible).
 Tailor tone, pacing, visuals, and music to the requested style.`;
 
   const userPrompt = `Style: ${style}\nLength: ${length}\n\nScript:\n${script}`;

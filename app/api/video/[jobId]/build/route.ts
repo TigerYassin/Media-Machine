@@ -61,13 +61,41 @@ async function mergeVideoAudio(videoPath: string, audioPath: string, outputPath:
 }
 
 async function concatenateClips(clipPaths: string[], outputPath: string): Promise<string> {
-  const listPath = path.join(path.dirname(outputPath), "concat_list.txt");
-  await fsp.writeFile(listPath, clipPaths.map((p) => `file '${p}'`).join("\n"));
+  if (clipPaths.length === 1) {
+    await fsp.copyFile(clipPaths[0], outputPath);
+    return outputPath;
+  }
+
+  // Build xfade + acrossfade filter chain for smooth crossfade transitions.
+  // Each clip is 10s; 0.5s overlap means offset = 9.5, 19, 28.5 …
+  const FADE = 0.5;
+  const CLIP_DUR = 10;
+
+  const cmd = ffmpeg();
+  clipPaths.forEach((p) => cmd.input(p));
+
+  // Build video xfade chain
+  const vFilters: string[] = [];
+  const aFilters: string[] = [];
+  let prevV = "[0:v]";
+  let prevA = "[0:a]";
+
+  for (let i = 1; i < clipPaths.length; i++) {
+    const offset = (CLIP_DUR - FADE) * i - FADE * (i - 1);
+    const outV = i < clipPaths.length - 1 ? `[vx${i}]` : "[vout]";
+    const outA = i < clipPaths.length - 1 ? `[ax${i}]` : "[aout]";
+    vFilters.push(`${prevV}[${i}:v]xfade=transition=fade:duration=${FADE}:offset=${offset}${outV}`);
+    aFilters.push(`${prevA}[${i}:a]acrossfade=d=${FADE}${outA}`);
+    prevV = outV;
+    prevA = outA;
+  }
+
+  const filterComplex = [...vFilters, ...aFilters].join(";");
+
   return new Promise((resolve, reject) => {
-    ffmpeg()
-      .input(listPath)
-      .inputOptions(["-f concat", "-safe 0"])
-      .outputOptions(["-c copy"])
+    cmd
+      .complexFilter(filterComplex)
+      .outputOptions(["-map [vout]", "-map [aout]", "-c:v libx264", "-c:a aac", "-movflags +faststart"])
       .output(outputPath)
       .on("end", () => resolve(outputPath))
       .on("error", reject)
