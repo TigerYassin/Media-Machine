@@ -34,7 +34,8 @@
       "Bash(git tag *)",
       "WebFetch(domain:gamma.app)",
       "Bash(mkdir -p /Users/majd/engine/app/api/video/start /Users/majd/engine/app/api/video/\\\\[jobId\\\\]/poll /Users/majd/engine/app/api/video/\\\\[jobId\\\\]/build)",
-      "Bash(node -e \"console.log\\(require\\('./node_modules/next/package.json'\\).version\\)\")"
+      "Bash(node -e \"console.log\\(require\\('./node_modules/next/package.json'\\).version\\)\")",
+      "Bash(ls -lh \"/Users/majd/Downloads/Revamp Your SAT Prep!.mp4\" 2>/dev/null || echo \"file not found\")"
     ]
   }
 }

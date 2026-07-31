@@ -8,6 +8,7 @@ import fs from "fs";
 import fsp from "fs/promises";
 import path from "path";
 import { Readable } from "stream";
+import { put } from "@vercel/blob";
 
 dns.setDefaultResultOrder("ipv4first");
 setGlobalDispatcher(new Agent({ connect: { family: 4 } }));
@@ -136,9 +137,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ job
 
         send({ type: "progress", step: "concat", message: "Stitching final video…" });
         await concatenateClips(mergedPaths, finalOutputPath);
-        await fsp.access(finalOutputPath, fs.constants.F_OK);
 
-        send({ type: "done", videoUrl: `/api/video/${jobId}/final.mp4`, videoTitle });
+        send({ type: "progress", step: "upload", message: "Uploading final video…" });
+        const fileBuffer = await fsp.readFile(finalOutputPath);
+        const blob = await put(`videos/${jobId}/final.mp4`, fileBuffer, {
+          access: "public",
+          contentType: "video/mp4",
+        });
+
+        send({ type: "done", videoUrl: blob.url, videoTitle });
       } catch (err) {
         console.error("build error:", err);
         send({ type: "error", message: err instanceof Error ? err.message : "Build failed." });
