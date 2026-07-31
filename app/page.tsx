@@ -326,7 +326,7 @@ export default function Home() {
                       {editedPalette.map((color, i) => (
                         <label key={i} className="group relative cursor-pointer" title={color}>
                           <div className="h-9 w-9 rounded-full border-2 border-zinc-600 transition group-hover:border-white" style={{ backgroundColor: color }} />
-                          <input type="color" value={color.startsWith("#") ? color : "#1a1a2e"}
+                          <input type="color" value={/^#[0-9a-fA-F]{6}$/.test(color) ? color : "#1a1a2e"}
                             onChange={(e) => setEditedPalette((prev) => prev.map((c, ci) => (ci === i ? e.target.value : c)))}
                             className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
                         </label>

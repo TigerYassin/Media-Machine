@@ -3,7 +3,6 @@ import dns from "dns";
 import { Agent, setGlobalDispatcher } from "undici";
 import fsp from "fs/promises";
 import path from "path";
-import jwt from "jsonwebtoken";
 
 dns.setDefaultResultOrder("ipv4first");
 setGlobalDispatcher(new Agent({ connect: { family: 4 } }));

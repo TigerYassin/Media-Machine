@@ -33,7 +33,8 @@
       "Bash(which ffmpeg; ls -la /opt/homebrew/bin/ffmpeg 2>&1)",
       "Bash(git tag *)",
       "WebFetch(domain:gamma.app)",
-      "Bash(mkdir -p /Users/majd/engine/app/api/video/start /Users/majd/engine/app/api/video/\\\\[jobId\\\\]/poll /Users/majd/engine/app/api/video/\\\\[jobId\\\\]/build)"
+      "Bash(mkdir -p /Users/majd/engine/app/api/video/start /Users/majd/engine/app/api/video/\\\\[jobId\\\\]/poll /Users/majd/engine/app/api/video/\\\\[jobId\\\\]/build)",
+      "Bash(node -e \"console.log\\(require\\('./node_modules/next/package.json'\\).version\\)\")"
     ]
   }
 }
