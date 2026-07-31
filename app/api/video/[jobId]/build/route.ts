@@ -46,17 +46,31 @@ async function generateVoiceover(eleven: ElevenLabsClient, text: string, outputP
   return outputPath;
 }
 
+function getAudioDuration(audioPath: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    ffmpeg.ffprobe(audioPath, (err, meta) => {
+      if (err) reject(err);
+      else resolve(meta.format.duration ?? 8);
+    });
+  });
+}
+
 async function mergeVideoAudio(videoPath: string, audioPath: string, outputPath: string): Promise<string> {
-  // Normalize to h264/aac and add 0.4s fade-in + fade-out per clip for smooth transitions.
+  // Measure actual voiceover length, then trim the video to match it exactly.
+  // This fixes both "voiceover cut off" and "dead air at end of scene".
+  const audioDur = await getAudioDuration(audioPath);
+  const videoDur = Math.min(audioDur + 0.4, 10); // trim video to audio + tiny buffer, max 10s
+  const fadeOut = Math.max(videoDur - 0.35, videoDur * 0.85);
+
   return new Promise((resolve, reject) => {
     ffmpeg()
       .input(videoPath)
       .input(audioPath)
       .complexFilter([
-        "[0:v]fade=t=in:st=0:d=0.4,fade=t=out:st=9.6:d=0.4[v]",
-        "[1:a]apad,afade=t=in:st=0:d=0.4,afade=t=out:st=9.6:d=0.4[a]",
+        `[0:v]trim=duration=${videoDur},setpts=PTS-STARTPTS,fade=t=in:st=0:d=0.3,fade=t=out:st=${fadeOut}:d=0.35[v]`,
+        `[1:a]atrim=duration=${audioDur},asetpts=PTS-STARTPTS,afade=t=in:st=0:d=0.3,afade=t=out:st=${Math.max(audioDur - 0.2, 0)}:d=0.2[a]`,
       ])
-      .outputOptions(["-map [v]", "-map [a]", "-c:v libx264", "-c:a aac", "-shortest", "-movflags +faststart"])
+      .outputOptions(["-map [v]", "-map [a]", "-c:v libx264", "-c:a aac", "-movflags +faststart"])
       .output(outputPath)
       .on("end", () => resolve(outputPath))
       .on("error", reject)
