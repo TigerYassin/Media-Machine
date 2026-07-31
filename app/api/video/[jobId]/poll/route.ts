@@ -15,27 +15,36 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ jobI
   const taskIds = searchParams.get("taskIds")?.split(",") ?? [];
   if (!taskIds.length) return NextResponse.json({ error: "taskIds required." }, { status: 400 });
 
-  const statuses = await Promise.all(
-    taskIds.map(async (taskId) => {
-      const res = await fetch(`https://api.klingai.com/v1/videos/text2video/${taskId}`, {
-        headers: { Authorization: `Bearer ${apiKey}` },
-      });
-      const json = (await res.json()) as {
-        code: number;
-        message: string;
-        data?: { task_status: string; task_status_msg?: string; task_result?: { videos?: { url: string }[] } };
-      };
-      return {
-        taskId,
-        status: json.data?.task_status ?? "unknown",
-        videoUrl: json.data?.task_result?.videos?.[0]?.url ?? null,
-        error: json.data?.task_status_msg ?? null,
-      };
-    })
-  );
+  try {
+    const statuses = await Promise.all(
+      taskIds.map(async (taskId) => {
+        try {
+          const res = await fetch(`https://api.klingai.com/v1/videos/text2video/${taskId}`, {
+            headers: { Authorization: `Bearer ${apiKey}` },
+          });
+          const text = await res.text();
+          const json = JSON.parse(text) as {
+            code: number;
+            message: string;
+            data?: { task_status: string; task_status_msg?: string; task_result?: { videos?: { url: string }[] } };
+          };
+          return {
+            taskId,
+            status: json.data?.task_status ?? "unknown",
+            videoUrl: json.data?.task_result?.videos?.[0]?.url ?? null,
+            error: json.data?.task_status_msg ?? json.message ?? null,
+          };
+        } catch {
+          return { taskId, status: "unknown", videoUrl: null, error: "poll error" };
+        }
+      })
+    );
 
-  const allDone = statuses.every((s) => s.status === "succeed");
-  const anyFailed = statuses.some((s) => s.status === "failed");
-
-  return NextResponse.json({ statuses, allDone, anyFailed });
+    const allDone = statuses.every((s) => s.status === "succeed");
+    const anyFailed = statuses.some((s) => s.status === "failed");
+    return NextResponse.json({ statuses, allDone, anyFailed });
+  } catch (err) {
+    console.error("poll error:", err);
+    return NextResponse.json({ error: err instanceof Error ? err.message : "Poll failed." }, { status: 500 });
+  }
 }
