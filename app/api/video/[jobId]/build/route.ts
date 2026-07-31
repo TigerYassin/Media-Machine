@@ -2,7 +2,6 @@ import { NextRequest } from "next/server";
 import { ElevenLabsClient } from "@elevenlabs/elevenlabs-js";
 import ffmpeg from "fluent-ffmpeg";
 import ffmpegInstaller from "@ffmpeg-installer/ffmpeg";
-import ffprobeInstaller from "@ffprobe-installer/ffprobe";
 import dns from "dns";
 import { Agent, setGlobalDispatcher } from "undici";
 import fs from "fs";
@@ -14,7 +13,6 @@ import { put } from "@vercel/blob";
 dns.setDefaultResultOrder("ipv4first");
 setGlobalDispatcher(new Agent({ connect: { family: 4 } }));
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
-ffmpeg.setFfprobePath(ffprobeInstaller.path);
 
 export const maxDuration = 300;
 
@@ -48,29 +46,30 @@ async function generateVoiceover(eleven: ElevenLabsClient, text: string, outputP
   return outputPath;
 }
 
-function getAudioDuration(audioPath: string): Promise<number> {
-  return new Promise((resolve, reject) => {
-    ffmpeg.ffprobe(audioPath, (err, meta) => {
-      if (err) reject(err);
-      else resolve(meta.format.duration ?? 8);
-    });
-  });
+// ElevenLabs Rachel speaks at ~2.5 words/sec. Estimate clip duration from text
+// so we can trim the 10s Kling clip to match the voiceover exactly.
+function estimateAudioDuration(text: string): number {
+  const words = text.trim().split(/\s+/).length;
+  const secs = words / 2.5;
+  return Math.min(Math.max(secs + 0.4, 2), 10); // clamp 2s–10s, +0.4s buffer
 }
 
-async function mergeVideoAudio(videoPath: string, audioPath: string, outputPath: string): Promise<string> {
-  // Measure actual voiceover length, then trim the video to match it exactly.
-  // This fixes both "voiceover cut off" and "dead air at end of scene".
-  const audioDur = await getAudioDuration(audioPath);
-  const videoDur = Math.min(audioDur + 0.4, 10); // trim video to audio + tiny buffer, max 10s
-  const fadeOut = Math.max(videoDur - 0.35, videoDur * 0.85);
+async function mergeVideoAudio(
+  videoPath: string,
+  audioPath: string,
+  outputPath: string,
+  voiceoverText: string
+): Promise<string> {
+  const clipDur = estimateAudioDuration(voiceoverText);
+  const fadeOut = Math.max(clipDur - 0.35, clipDur * 0.85);
 
   return new Promise((resolve, reject) => {
     ffmpeg()
       .input(videoPath)
       .input(audioPath)
       .complexFilter([
-        `[0:v]trim=duration=${videoDur},setpts=PTS-STARTPTS,fade=t=in:st=0:d=0.3,fade=t=out:st=${fadeOut}:d=0.35[v]`,
-        `[1:a]atrim=duration=${audioDur},asetpts=PTS-STARTPTS,afade=t=in:st=0:d=0.3,afade=t=out:st=${Math.max(audioDur - 0.2, 0)}:d=0.2[a]`,
+        `[0:v]trim=duration=${clipDur},setpts=PTS-STARTPTS,fade=t=in:st=0:d=0.3,fade=t=out:st=${fadeOut}:d=0.35[v]`,
+        `[1:a]apad,atrim=duration=${clipDur},asetpts=PTS-STARTPTS,afade=t=in:st=0:d=0.3,afade=t=out:st=${Math.max(clipDur - 0.3, 0)}:d=0.3[a]`,
       ])
       .outputOptions(["-map [v]", "-map [a]", "-c:v libx264", "-c:a aac", "-movflags +faststart"])
       .output(outputPath)
@@ -149,7 +148,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ job
         const mergedPaths = await Promise.all(
           clipPaths.map(async (clipPath, i) => {
             const mergedPath = path.join(jobDir, `scene${i + 1}_merged.mp4`);
-            await mergeVideoAudio(clipPath, audioPaths[i], mergedPath);
+            await mergeVideoAudio(clipPath, audioPaths[i], mergedPath, scenes[i].voiceoverText);
             send({ type: "progress", step: "merge", scene: i + 1, total, message: `Scene ${i + 1}/${total} merged ✓` });
             return mergedPath;
           })
