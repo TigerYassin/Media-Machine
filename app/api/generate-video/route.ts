@@ -252,44 +252,33 @@ export async function POST(req: NextRequest) {
       const total = scenes.length;
 
       try {
-        // Submit tasks sequentially (avoids hitting the 5-concurrent-task limit),
-        // then poll and process all of them in parallel.
-        send({ type: "progress", scene: 0, total, step: "video", message: `Submitting all ${total} scenes to Kling AI…` });
-        const taskIds: string[] = [];
+        // Process scenes one at a time — the trial resource pack only allows
+        // 1 concurrent Kling task, so submitting multiple at once fails.
+        const mergedPaths: string[] = [];
+
         for (let i = 0; i < scenes.length; i++) {
           const scene = scenes[i];
-          const id = await submitKlingTask(klingApiKey, scene.visualPrompt, scene.cameraMovement, style);
-          taskIds.push(id);
+          const sceneNum = i + 1;
+
+          send({ type: "progress", scene: sceneNum, total, step: "video", message: `Scene ${sceneNum}/${total}: Submitting to Kling AI…` });
+          const taskId = await submitKlingTask(klingApiKey, scene.visualPrompt, scene.cameraMovement, style);
+
+          send({ type: "progress", scene: sceneNum, total, step: "video", message: `Scene ${sceneNum}/${total}: Kling AI generating video… (~1–2 min)` });
+          const clipUrl = await pollKlingTask(klingApiKey, taskId);
+          const clipPath = path.join(jobDir, `scene${sceneNum}_clip.mp4`);
+          await downloadFile(clipUrl, clipPath);
+
+          send({ type: "progress", scene: sceneNum, total, step: "audio", message: `Scene ${sceneNum}/${total}: Recording voiceover…` });
+          const audioPath = path.join(jobDir, `scene${sceneNum}_audio.mp3`);
+          await generateVoiceover(eleven, scene.voiceoverText, audioPath);
+
+          send({ type: "progress", scene: sceneNum, total, step: "merge", message: `Scene ${sceneNum}/${total}: Merging video and audio…` });
+          const mergedPath = path.join(jobDir, `scene${sceneNum}_merged.mp4`);
+          await mergeVideoAudio(clipPath, audioPath, mergedPath);
+          mergedPaths.push(mergedPath);
+
+          send({ type: "progress", scene: sceneNum, total, step: "done", message: `Scene ${sceneNum}/${total}: Done ✓` });
         }
-
-        // Poll + download + voiceover + merge all scenes in parallel.
-        // Each scene races independently; the slowest one determines wall-clock time.
-        send({ type: "progress", scene: 0, total, step: "video", message: `All scenes submitted — generating in parallel (~1–2 min)…` });
-
-        const mergedPaths = await Promise.all(
-          scenes.map(async (scene, i) => {
-            const sceneNum = i + 1;
-
-            // Poll until Kling finishes this scene's clip.
-            const clipUrl = await pollKlingTask(klingApiKey, taskIds[i]);
-            send({ type: "progress", scene: sceneNum, total, step: "audio", message: `Scene ${sceneNum}/${total}: Video ready — recording voiceover…` });
-
-            const clipPath = path.join(jobDir, `scene${sceneNum}_clip.mp4`);
-            await downloadFile(clipUrl, clipPath);
-
-            // Voiceover.
-            const audioPath = path.join(jobDir, `scene${sceneNum}_audio.mp3`);
-            await generateVoiceover(eleven, scene.voiceoverText, audioPath);
-
-            // Merge.
-            send({ type: "progress", scene: sceneNum, total, step: "merge", message: `Scene ${sceneNum}/${total}: Merging video and audio…` });
-            const mergedPath = path.join(jobDir, `scene${sceneNum}_merged.mp4`);
-            await mergeVideoAudio(clipPath, audioPath, mergedPath);
-
-            send({ type: "progress", scene: sceneNum, total, step: "done", message: `Scene ${sceneNum}/${total}: Done ✓` });
-            return mergedPath;
-          })
-        );
 
         // Stitch all scenes in order.
         send({ type: "progress", scene: total, total, step: "concat", message: "Stitching all scenes into final video…" });
