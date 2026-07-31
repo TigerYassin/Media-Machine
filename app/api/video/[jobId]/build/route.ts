@@ -51,7 +51,7 @@ async function generateVoiceover(eleven: ElevenLabsClient, text: string, outputP
 function estimateAudioDuration(text: string): number {
   const words = text.trim().split(/\s+/).length;
   const secs = words / 2.5;
-  return Math.min(Math.max(secs + 0.4, 2), 10); // clamp 2s–10s, +0.4s buffer
+  return Math.min(Math.max(secs + 0.6, 2), 10); // clamp 2s–10s, +0.6s buffer
 }
 
 async function mergeVideoAudio(

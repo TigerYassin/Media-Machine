@@ -107,17 +107,21 @@ Respond with ONLY valid JSON (no markdown, no code fences) matching this shape:
 Target video length: ${length} (${sceneCount} scenes × 10 seconds each).
 
 STRICT RULES — follow exactly:
-- voiceoverText: MAXIMUM 12 words per scene. Short, punchy, impactful. No filler.
-  Good: "SAT prep doesn't have to feel like torture." (9 words)
-  Bad: "In this video we are going to show you how to prepare for the SAT in a fun way." (too long)
-- visualPrompt: Write a specific, cinematic shot description. Always include:
-  • Subject + action (what is happening)
-  • Setting + lighting (where, what kind of light)
-  • Camera angle + mood
-  Example: "Extreme close-up of a student's eyes lighting up with realization, warm golden
-  backlight, shallow depth of field, euphoric mood, cinematic 4K"
-  Never write vague prompts like "a student studying" — be a film director.
-- Make visuals flow scene-to-scene (consistent color grade, connected narrative).
+- voiceoverText: 18-22 words per scene. Punchy and conversational — written to be SPOKEN,
+  not read. Natural rhythm, no jargon.
+  Good: "Most students waste hours on the wrong chapters. Our AI finds exactly what you need to study."
+  Bad: "Utilizing our platform you can optimize your study sessions with AI-powered recommendations."
+- visualPrompt: Write a REALISTIC, professional shot that could appear in a high-budget TV ad.
+  NO fantasy, NO abstract art, NO morphing faces, NO weird AI effects.
+  Always specify: shot type + real subject + real setting + lighting + camera movement.
+  GOOD examples:
+    "Medium shot of a teenage girl laughing at her phone screen, sitting at a bright cafe table,
+    natural window light, handheld camera, candid and authentic feel"
+    "Close-up of a pencil circling the correct answer on a printed test paper, warm desk lamp
+    light, shallow depth of field, satisfying and clean"
+  BAD: "Abstract swirling numbers", "glowing brain", "morphing student"
+  Think: stock footage quality, real people, real places, believable scenes.
+- Visuals should tell a connected story across all scenes.
 Tailor tone, pacing, and music to the requested style.`;
 
   const userPrompt = `Style: ${style}\nLength: ${length}\n\nScript:\n${script}`;

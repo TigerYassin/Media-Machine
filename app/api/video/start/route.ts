@@ -20,8 +20,9 @@ async function submitKlingTask(apiKey: string, visualPrompt: string, cameraMovem
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({
         model_name: "kling-v1-6",
-        prompt: `${style} style. ${visualPrompt}. Camera movement: ${cameraMovement}. Cinematic quality, professional production.`,
-        mode: "std",
+        prompt: `${visualPrompt}. ${cameraMovement}. ${style} style. Real people, realistic setting, professional TV commercial quality, sharp focus, natural lighting.`,
+        negative_prompt: "abstract, morphing, distorted faces, glowing effects, fantasy, surreal, blurry, watermark, text overlay",
+        mode: "pro",
         duration: "10",
       }),
     });
