@@ -47,6 +47,13 @@ interface ProgressEvent {
   videoTitle?: string;
 }
 
+interface KlingStatus {
+  taskId: string;
+  status: string;
+  videoUrl: string | null;
+  error: string | null;
+}
+
 interface GeneratedImage {
   url: string | null;
 }
@@ -124,13 +131,48 @@ export default function Home() {
     if (!plan) return;
     setGeneratingVideo(true); setVideoError(null); setVideoUrl(null); setVideoProgress(null);
     try {
-      const res = await fetch("/api/generate-video", {
+      // Step 1: Submit all Kling tasks (fast, ~30s)
+      setVideoProgress({ type: "progress", message: `Submitting ${editedScenes.length} scenes to Kling AI…` });
+      const startRes = await fetch("/api/video/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ scenes: editedScenes, style, videoTitle: plan.videoTitle }),
       });
-      if (!res.body) throw new Error("No response stream.");
-      const reader = res.body.getReader();
+      const startData = await startRes.json();
+      if (!startRes.ok) throw new Error(startData.error ?? "Failed to submit tasks.");
+      const { jobId, taskIds, total } = startData as { jobId: string; taskIds: string[]; total: number };
+
+      // Step 2: Poll until all Kling tasks complete
+      setVideoProgress({ type: "progress", message: `All ${total} scenes submitted — Kling AI generating… (check back in ~2 min)` });
+      let videoUrls: string[] = [];
+      while (true) {
+        await new Promise((r) => setTimeout(r, 10000));
+        const pollRes = await fetch(`/api/video/${jobId}/poll?taskIds=${taskIds.join(",")}`);
+        const pollData = await pollRes.json() as { statuses: KlingStatus[]; allDone: boolean; anyFailed: boolean };
+        const done = pollData.statuses.filter((s) => s.status === "succeed").length;
+        setVideoProgress({ type: "progress", scene: done, total, message: `Kling AI: ${done}/${total} scenes ready…` });
+        if (pollData.anyFailed) {
+          const failed = pollData.statuses.find((s) => s.status === "failed");
+          throw new Error(`Kling task failed: ${failed?.error ?? "unknown reason"}`);
+        }
+        if (pollData.allDone) {
+          videoUrls = pollData.statuses.map((s) => s.videoUrl!);
+          break;
+        }
+      }
+
+      // Step 3: Build final video (download + voiceover + ffmpeg, ~3 min)
+      setVideoProgress({ type: "progress", message: "All clips ready — building final video…" });
+      const buildRes = await fetch(`/api/video/${jobId}/build`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          scenes: editedScenes.map((s, i) => ({ voiceoverText: s.voiceoverText, videoUrl: videoUrls[i] })),
+          videoTitle: plan.videoTitle,
+        }),
+      });
+      if (!buildRes.body) throw new Error("No response stream.");
+      const reader = buildRes.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
       while (true) {
@@ -142,7 +184,7 @@ export default function Home() {
         for (const line of lines) {
           if (!line.startsWith("data: ")) continue;
           const event: ProgressEvent = JSON.parse(line.slice(6));
-          if (event.type === "error") throw new Error(event.message ?? "Failed.");
+          if (event.type === "error") throw new Error(event.message ?? "Build failed.");
           if (event.type === "done" && event.videoUrl) { setVideoUrl(event.videoUrl); setGeneratingVideo(false); return; }
           setVideoProgress(event);
         }
@@ -159,12 +201,15 @@ export default function Home() {
   }
 
   function progressPercent() {
-    if (!videoProgress?.scene || !videoProgress?.total) return 0;
-    const stepsPerScene = 4;
-    const stepIndex = ["video", "audio", "merge", "concat"].indexOf(videoProgress.step ?? "");
-    const completedScenes = (videoProgress.scene - 1) * stepsPerScene;
-    const total = videoProgress.total * stepsPerScene + 1;
-    return Math.round(((completedScenes + Math.max(0, stepIndex)) / total) * 100);
+    if (!videoProgress) return 0;
+    const step = videoProgress.step ?? "";
+    // Phase weights: submit=10%, poll=40%, download=55%, audio=70%, merge=85%, concat=95%
+    if (!step) return videoProgress.scene != null ? 40 + Math.round((videoProgress.scene / (videoProgress.total ?? 1)) * 30) : 5;
+    if (step === "download") return 55;
+    if (step === "audio") return 70;
+    if (step === "merge") return 70 + Math.round(((videoProgress.scene ?? 0) / (videoProgress.total ?? 1)) * 15);
+    if (step === "concat") return 90;
+    return 5;
   }
 
   // ---------------------------------------------------------------------------
