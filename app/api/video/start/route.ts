@@ -11,7 +11,7 @@ export const maxDuration = 300;
 
 const TMP_DIR = path.join("/tmp", "engine-videos");
 
-async function submitKlingTask(apiKey: string, visualPrompt: string, cameraMovement: string, style: string): Promise<string> {
+async function submitKlingTask(apiKey: string, visualPrompt: string, cameraMovement: string, style: string, mode: "pro" | "standard"): Promise<string> {
   // Retry up to 5 times if we hit the concurrency limit — previous tasks may
   // still be processing from a failed attempt. Wait 20s between retries.
   for (let attempt = 0; attempt < 5; attempt++) {
@@ -22,7 +22,7 @@ async function submitKlingTask(apiKey: string, visualPrompt: string, cameraMovem
         model_name: "kling-v1-6",
         prompt: `${visualPrompt}. ${cameraMovement}. ${style} style. Real people, realistic setting, professional TV commercial quality, sharp focus, natural lighting.`,
         negative_prompt: "abstract, morphing, distorted faces, glowing effects, fantasy, surreal, blurry, watermark, text overlay",
-        mode: "pro",
+        mode,
         duration: "10",
       }),
     });
@@ -50,8 +50,10 @@ export async function POST(req: NextRequest) {
     const apiKey = process.env.KLING_API_KEY;
     if (!apiKey) return NextResponse.json({ error: "KLING_API_KEY not set." }, { status: 500 });
 
-    const { scenes, style, videoTitle } = (await req.json()) as { scenes: Scene[]; style: string; videoTitle: string };
+    const { scenes, style, videoTitle, klingMode = "pro" } = (await req.json()) as { scenes: Scene[]; style: string; videoTitle: string; klingMode?: "pro" | "standard" };
     if (!Array.isArray(scenes) || !scenes.length) return NextResponse.json({ error: "scenes required." }, { status: 400 });
+
+    const mode: "pro" | "standard" = klingMode === "standard" ? "standard" : "pro";
 
     const jobId = Date.now().toString();
     const jobDir = path.join(TMP_DIR, jobId);
@@ -61,7 +63,7 @@ export async function POST(req: NextRequest) {
 
     const taskIds: string[] = [];
     for (const scene of scenes) {
-      const taskId = await submitKlingTask(apiKey, scene.visualPrompt, scene.cameraMovement, style);
+      const taskId = await submitKlingTask(apiKey, scene.visualPrompt, scene.cameraMovement, style, mode);
       taskIds.push(taskId);
     }
 

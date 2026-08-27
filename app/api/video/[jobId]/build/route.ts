@@ -35,8 +35,8 @@ async function streamToBuffer(stream: Readable): Promise<Buffer> {
   return Buffer.concat(chunks);
 }
 
-async function generateVoiceover(eleven: ElevenLabsClient, text: string, outputPath: string): Promise<string> {
-  const audioStream = await eleven.textToSpeech.convert("21m00Tcm4TlvDq8ikWAM", {
+async function generateVoiceover(eleven: ElevenLabsClient, text: string, outputPath: string, voiceId: string): Promise<string> {
+  const audioStream = await eleven.textToSpeech.convert(voiceId, {
     text,
     modelId: "eleven_multilingual_v2",
     voiceSettings: { stability: 0.5, similarityBoost: 0.75 },
@@ -46,11 +46,10 @@ async function generateVoiceover(eleven: ElevenLabsClient, text: string, outputP
   return outputPath;
 }
 
-// ElevenLabs Rachel speaks at ~2.5 words/sec. Estimate clip duration from text
-// so we can trim the 10s Kling clip to match the voiceover exactly.
-function estimateAudioDuration(text: string): number {
+// Estimate clip duration from word count and speech rate (words/sec).
+function estimateAudioDuration(text: string, wordsPerSecond: number): number {
   const words = text.trim().split(/\s+/).length;
-  const secs = words / 2.5;
+  const secs = words / wordsPerSecond;
   return Math.min(Math.max(secs + 0.6, 2), 10); // clamp 2s–10s, +0.6s buffer
 }
 
@@ -58,9 +57,10 @@ async function mergeVideoAudio(
   videoPath: string,
   audioPath: string,
   outputPath: string,
-  voiceoverText: string
+  voiceoverText: string,
+  wordsPerSecond: number
 ): Promise<string> {
-  const clipDur = estimateAudioDuration(voiceoverText);
+  const clipDur = estimateAudioDuration(voiceoverText, wordsPerSecond);
   const fadeOut = Math.max(clipDur - 0.35, clipDur * 0.85);
 
   return new Promise((resolve, reject) => {
@@ -109,7 +109,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ job
     );
   }
 
-  const { scenes, videoTitle } = (await req.json()) as { scenes: SceneBuild[]; videoTitle: string };
+  const { scenes, videoTitle, voiceId = "21m00Tcm4TlvDq8ikWAM", wordsPerSecond = 2.5 } = (await req.json()) as { scenes: SceneBuild[]; videoTitle: string; voiceId?: string; wordsPerSecond?: number };
   const eleven = new ElevenLabsClient({ apiKey: process.env.ELEVENLABS_API_KEY });
   const jobDir = path.join(TMP_DIR, jobId);
   await fsp.mkdir(jobDir, { recursive: true });
@@ -137,7 +137,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ job
         const audioPaths = await Promise.all(
           scenes.map(async (scene, i) => {
             const audioPath = path.join(jobDir, `scene${i + 1}_audio.mp3`);
-            await generateVoiceover(eleven, scene.voiceoverText, audioPath);
+            await generateVoiceover(eleven, scene.voiceoverText, audioPath, voiceId);
             return audioPath;
           })
         );
@@ -148,7 +148,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ job
         const mergedPaths = await Promise.all(
           clipPaths.map(async (clipPath, i) => {
             const mergedPath = path.join(jobDir, `scene${i + 1}_merged.mp4`);
-            await mergeVideoAudio(clipPath, audioPaths[i], mergedPath, scenes[i].voiceoverText);
+            await mergeVideoAudio(clipPath, audioPaths[i], mergedPath, scenes[i].voiceoverText, wordsPerSecond);
             send({ type: "progress", step: "merge", scene: i + 1, total, message: `Scene ${i + 1}/${total} merged ✓` });
             return mergedPath;
           })

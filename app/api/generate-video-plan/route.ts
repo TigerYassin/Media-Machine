@@ -10,15 +10,34 @@ const ALLOWED_STYLES = [
   "Startup Promo",
 ] as const;
 
-// Target scene counts per length selection — each scene becomes a 10s video
-// clip (see generate-video/route.ts), so these are calibrated to add up to
-// the actual requested runtime: 30s/10=3, 60s/10=6, 90s/10=9, 2min/10=12.
 const LENGTH_SCENE_COUNT: Record<string, number> = {
   "30s": 3,
   "60s": 6,
   "90s": 9,
   "2min": 12,
 };
+
+// Models served via Groq's OpenAI-compatible API (free tier)
+const GROQ_MODELS = new Set([
+  "llama-3.3-70b-versatile",
+  "llama-3.1-8b-instant",
+  "gemma2-9b-it",
+]);
+
+function getClient(model: string): OpenAI {
+  if (GROQ_MODELS.has(model)) {
+    const apiKey = process.env.GROQ_API_KEY;
+    if (!apiKey) {
+      throw new Error(
+        "GROQ_API_KEY is not set. Add it to your .env.local to use free Groq models."
+      );
+    }
+    return new OpenAI({ apiKey, baseURL: "https://api.groq.com/openai/v1" });
+  }
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) throw new Error("OPENAI_API_KEY is not set.");
+  return new OpenAI({ apiKey });
+}
 
 interface Scene {
   startTime: string;
@@ -40,14 +59,8 @@ interface VideoPlan {
   scenes: Scene[];
 }
 
-function getOpenAIClient() {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) throw new Error("OPENAI_API_KEY environment variable is not set");
-  return new OpenAI({ apiKey });
-}
-
 export async function POST(req: NextRequest) {
-  let body: { script?: unknown; style?: unknown; length?: unknown };
+  let body: { script?: unknown; style?: unknown; length?: unknown; scriptModel?: unknown };
 
   try {
     body = await req.json();
@@ -55,7 +68,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Request body must be valid JSON." }, { status: 400 });
   }
 
-  const { script, style, length = "60s" } = body;
+  const { script, style, length = "60s", scriptModel = "gpt-4o-mini" } = body;
 
   if (typeof script !== "string" || script.trim().length === 0) {
     return NextResponse.json(
@@ -71,11 +84,12 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const model = typeof scriptModel === "string" ? scriptModel : "gpt-4o-mini";
   const sceneCount = LENGTH_SCENE_COUNT[length as string] ?? 5;
 
   let client: OpenAI;
   try {
-    client = getOpenAIClient();
+    client = getClient(model);
   } catch (err) {
     return NextResponse.json({ error: (err as Error).message }, { status: 500 });
   }
@@ -128,7 +142,7 @@ Tailor tone, pacing, and music to the requested style.`;
 
   try {
     const completion = await client.chat.completions.create({
-      model: "gpt-4o-mini",
+      model,
       temperature: 0.8,
       response_format: { type: "json_object" },
       messages: [
@@ -150,6 +164,7 @@ Tailor tone, pacing, and music to the requested style.`;
     return NextResponse.json(plan, { status: 200 });
   } catch (err) {
     console.error("generate-video-plan error:", err);
-    return NextResponse.json({ error: "Failed to generate video plan. Please try again." }, { status: 500 });
+    const message = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

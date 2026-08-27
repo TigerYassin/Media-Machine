@@ -1,6 +1,8 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
+import { AppSettings, DEFAULT_SETTINGS, loadSettings } from "./lib/settings";
+import { SettingsModal } from "./components/SettingsModal";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -64,11 +66,13 @@ interface GeneratedImage {
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<"video" | "creative">("video");
+  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+  const [showSettings, setShowSettings] = useState(false);
 
   // --- Video Engine state ---
   const [script, setScript] = useState("");
-  const [style, setStyle] = useState<string>(STYLES[0]);
-  const [length, setLength] = useState<string>(LENGTHS[1]);
+  const [style, setStyle] = useState<string>(DEFAULT_SETTINGS.defaultVideoStyle);
+  const [length, setLength] = useState<string>(DEFAULT_SETTINGS.defaultVideoLength);
   const [loadingPlan, setLoadingPlan] = useState(false);
   const [planError, setPlanError] = useState<string | null>(null);
   const [plan, setPlan] = useState<VideoPlan | null>(null);
@@ -83,13 +87,25 @@ export default function Home() {
 
   // --- Creative Engine state ---
   const [imagePrompt, setImagePrompt] = useState("");
-  const [imagePlatform, setImagePlatform] = useState<string>(PLATFORMS[0]);
-  const [imageStyle, setImageStyle] = useState<string>(IMAGE_STYLES[0]);
-  const [imageTone, setImageTone] = useState<string>(IMAGE_TONES[0]);
-  const [imageCount, setImageCount] = useState(2);
+  const [imagePlatform, setImagePlatform] = useState<string>(DEFAULT_SETTINGS.defaultImagePlatform);
+  const [imageStyle, setImageStyle] = useState<string>(DEFAULT_SETTINGS.defaultImageStyle);
+  const [imageTone, setImageTone] = useState<string>(DEFAULT_SETTINGS.defaultImageTone);
+  const [imageCount, setImageCount] = useState(DEFAULT_SETTINGS.defaultImageCount);
   const [loadingImages, setLoadingImages] = useState(false);
   const [imageError, setImageError] = useState<string | null>(null);
   const [generatedImages, setGeneratedImages] = useState<GeneratedImage[]>([]);
+
+  // Load settings from localStorage on mount and apply defaults
+  useEffect(() => {
+    const s = loadSettings();
+    setSettings(s);
+    setStyle(s.defaultVideoStyle);
+    setLength(s.defaultVideoLength);
+    setImagePlatform(s.defaultImagePlatform);
+    setImageStyle(s.defaultImageStyle);
+    setImageTone(s.defaultImageTone);
+    setImageCount(s.defaultImageCount);
+  }, []);
 
   // ---------------------------------------------------------------------------
   // Video Engine handlers
@@ -102,7 +118,7 @@ export default function Home() {
       const res = await fetch("/api/generate-video-plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ script, style, length }),
+        body: JSON.stringify({ script, style, length, scriptModel: settings.scriptModel }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Something went wrong.");
@@ -136,7 +152,7 @@ export default function Home() {
       const startRes = await fetch("/api/video/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ scenes: editedScenes, style, videoTitle: plan.videoTitle }),
+        body: JSON.stringify({ scenes: editedScenes, style, videoTitle: plan.videoTitle, klingMode: settings.klingMode }),
       });
       const startData = await startRes.json();
       if (!startRes.ok) throw new Error(startData.error ?? "Failed to submit tasks.");
@@ -169,6 +185,8 @@ export default function Home() {
         body: JSON.stringify({
           scenes: editedScenes.map((s, i) => ({ voiceoverText: s.voiceoverText, videoUrl: videoUrls[i] })),
           videoTitle: plan.videoTitle,
+          voiceId: settings.voiceId,
+          wordsPerSecond: settings.wordsPerSecond,
         }),
       });
       if (!buildRes.body) throw new Error("No response stream.");
@@ -223,7 +241,7 @@ export default function Home() {
       const res = await fetch("/api/generate-image", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: imagePrompt, platform: imagePlatform, style: imageStyle, tone: imageTone, count: imageCount }),
+        body: JSON.stringify({ prompt: imagePrompt, platform: imagePlatform, style: imageStyle, tone: imageTone, count: imageCount, imageModel: settings.imageModel }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Image generation failed.");
@@ -244,10 +262,30 @@ export default function Home() {
       <main className="mx-auto max-w-4xl px-4 py-10 sm:py-16">
 
         {/* Header */}
-        <header className="mb-8 text-center">
-          <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">AI Creative Studio</h1>
-          <p className="mt-2 text-zinc-400">Turn ideas into videos and social media content — powered by AI.</p>
+        <header className="mb-8 flex items-start justify-between gap-4">
+          <div className="text-center flex-1">
+            <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">AI Creative Studio</h1>
+            <p className="mt-2 text-zinc-400">Turn ideas into videos and social media content — powered by AI.</p>
+          </div>
+          <button
+            onClick={() => setShowSettings(true)}
+            title="Settings"
+            className="mt-1 flex-shrink-0 rounded-xl border border-zinc-700 p-2.5 text-zinc-400 transition hover:border-zinc-500 hover:text-zinc-200"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
+          </button>
         </header>
+
+        {showSettings && (
+          <SettingsModal
+            settings={settings}
+            onClose={() => setShowSettings(false)}
+            onChange={setSettings}
+          />
+        )}
 
         {/* Tab bar */}
         <div className="mb-8 flex gap-1 rounded-xl border border-zinc-800 bg-zinc-900 p-1">
